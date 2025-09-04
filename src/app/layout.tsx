@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs"; 
+import ConvexClerkProvider from "../providers/ConvexClerkProvider"; 
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,12 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider
-      //publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY} // ✅ pass env var
-      publishableKey={'pk_test_Y29vbC1sZW9wYXJkLTAuY2xlcmsuYWNjb3VudHMuZGV2JA'} // ❌ hardcoded string (for demo purposes only)
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
-    >
+    <ConvexClerkProvider>
       <html lang="en">
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
@@ -37,6 +32,6 @@ export default function RootLayout({
           {children}
         </body>
       </html>
-    </ClerkProvider>
+    </ConvexClerkProvider>
   );
 }
