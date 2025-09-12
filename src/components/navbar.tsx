@@ -1,12 +1,12 @@
 "use client"
 import React from 'react'
 import { SignInButton, UserButton, useUser } from '@clerk/nextjs'
-import { HomeIcon, Home, ZapIcon, Dumbbell, DumbbellIcon, UserIcon } from 'lucide-react'
+import { HomeIcon, ZapIcon, DumbbellIcon, UserIcon } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from './ui/button'
 import { SignUpButton } from '@clerk/nextjs'
 
-const navbar = () => {
+const Navbar = () => {
     const {isSignedIn} = useUser()
   return (
     <header className='fixed top-0 left-0 right-0 bg-background/60 backdrop-blur-md border-b border-border py-3'>
@@ -77,4 +77,4 @@ const navbar = () => {
   )
 }
 
-export default navbar
+export default Navbar
