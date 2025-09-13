@@ -2,6 +2,8 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import { ArrowRightIcon } from 'lucide-react'
 import Link from 'next/link'
+import TerminalOverlay from '@/components/TerminalOverlay'
+import UserProgram from '@/components/UserProgram'
 const HomePage = () => {
   return (
     <div className='flex flex-col min-h-screen text-foreground overflow-hidden'>
@@ -100,13 +102,19 @@ const HomePage = () => {
                   <div className='absolute top-0 left-1/2 w-px h-1/4 bg-primary/50'/>
                   <div className='absolute bottom-0 left-1/2 w-px h-1/4 bg-primary/50'/>
                 </div>
+
+                <div className='absolute inset-0 bg-gradient-to-t from-background via-background/40
+                to-transparent'/>
               </div>
+
+              {/* terminal overlay */}
+              <TerminalOverlay/>
             </div>              
             </div>
           </div>
         </div>
       </section>
-      
+      <UserProgram />
     </div>
   )
 }
