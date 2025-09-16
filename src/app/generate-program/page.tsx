@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useRef } from 'react';
 import { vapi } from '@/lib/vapi';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 
 const GenerateProgramPage = () => {
@@ -13,7 +14,7 @@ const GenerateProgramPage = () => {
   const [callActive, setCallActive] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState<any[]>([]);
   const [callEnded, setCallEnded] = useState(false);
 
   const {user} = useUser()
@@ -67,12 +68,24 @@ const GenerateProgramPage = () => {
       setIsSpeaking(false);
     }
 
-    const handleMessage =(message: any) =>{}
+    const handleMessage =(message: any) =>{
+      if(message.type === "transcript" && message.transcriptType === "final"){
+        const newMessage = {content:message.transcript, role:message.role}
+        setMessages(prev =>[...prev,newMessage])
+      }
+    }
     
     const handleError =(error: any) =>{
       console.log("Vapi Error", error)
+      console.log("Error details:", JSON.stringify(error))
       setConnecting(false);
       setCallActive(false);
+      
+      if (error && error.message) {
+        alert(`Call Error: ${error.message}`);
+      } else {
+        alert("Call failed: The assistant ID may not exist. Please check your Vapi dashboard.");
+      }
     }
    
     vapi.on("call-start",handleCallStart)
@@ -104,13 +117,30 @@ const GenerateProgramPage = () => {
       ? `${user.firstName} ${user.lastName || ""}`.trim()
       :"Hi There";
 
-      await vapi.start(process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID!,{
-        variableValues:{
-          full_name: fullName
-        }
-      })
-    } catch (error) {
+      const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID || "34caa6a5-e59f-4a2a-a0de-9642aabdfe48";
       
+      console.log("Starting call with assistant ID:", assistantId);
+      console.log("API Key:", process.env.NEXT_PUBLIC_VAPI_API_KEY || "6471346a-3201-42a8-8d8c-bdb65440679f");
+      console.log("Full name variable:", fullName);
+      
+      try {
+        await vapi.start(assistantId, {
+          variableValues: {
+            full_name: fullName
+          }
+        })
+        console.log("Vapi start call succeeded!");
+      } catch (startError) {
+        console.error("Vapi start failed:", startError);
+        console.error("Error type:", typeof startError);
+        console.error("Error message:", startError instanceof Error ? startError.message : String(startError));
+        throw startError;
+      }
+    } catch (error) {
+      console.error("Error starting call:", error);
+      setConnecting(false);
+      setCallActive(false);
+      alert("Failed to start call. Please check your Vapi configuration.");
     }}
   }
  
@@ -216,7 +246,56 @@ const GenerateProgramPage = () => {
               </div>
                </div>
               </Card>
+
       </div>
+      
+              {/*messagae container */}
+              {messages.length > 0 && (
+                <div ref={messageContainerRef}
+                className='w-full bg-card/90 backdrop-blur-sm border border-border rounded-xl p-4 mb-8 h-64 overflow-y-auto 
+                transition-all duration-300 scroll-smooth'>
+                  <div className='space-y-3'>
+                    {messages.map((msg, index) => (
+                      <div key= {index} className='message-item animate-fadeIn'>
+                        <div className='font-semibold text-xs text-muted-foreground mb-1'>
+                          {msg.role === "assistant" ? "CoreSync AI" : "You"}:
+                        </div>
+                        <p className='text-foreground'>{msg.content}</p>
+                        </div>
+                    ))}
+                </div>
+              </div>
+              )}
+
+              {/*call controls */}
+              <div className='w-full flex justify-center gap-4'>
+                <Button
+                className={`w-40 text-xl rounded-3xl ${
+                  callActive
+                  ? "bg-destructive hover:bg-destructive/90"
+                  : callEnded
+                  ? "bg-green-600 hover:bg-green-700"
+                  : "bg-primary hover:bg-primary/90"
+                } text-white relative`}
+
+                onClick={toggleCall}
+                disabled={connecting || callEnded}
+                >
+                  {connecting && (
+                    <span className='absolute inset-0 rounded-full animate-ping bg-primary/50 opacity-75'></span>
+                  )}
+
+                  <span>
+                    {callActive
+                    ? "End Call"
+                  : connecting
+                  ? "Connecting..."
+                : callEnded
+                ? "View Profile"
+              : "Start Call"}
+                  </span>
+                </Button>
+              </div>
     </div>
   </div>
 )
