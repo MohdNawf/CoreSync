@@ -16,6 +16,7 @@ const GenerateProgramPage = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [callEnded, setCallEnded] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const {user} = useUser()
   const router = useRouter();
@@ -33,8 +34,10 @@ const GenerateProgramPage = () => {
 
   useEffect(() => {
     if(callEnded){
+      console.log("Call ended, redirecting to profile in 1.5 seconds...");
       const redirectTimer = setTimeout(()=>{
-      router.push("/profile")
+        console.log("Redirecting to profile now...");
+        router.push("/profile");
       }, 1500);
 
       return () => clearTimeout(redirectTimer);
@@ -48,6 +51,7 @@ const GenerateProgramPage = () => {
       setConnecting(false);
       setCallActive(true);
       setCallEnded(false);
+      setConnectionError(null);
     }
     
     const handleCallEnd =() =>{
@@ -56,6 +60,7 @@ const GenerateProgramPage = () => {
       setConnecting(false);
       setIsSpeaking(false);
       setCallEnded(true);
+      console.log("Call ended state set to true");
     }
 
     const handleSpeechStart =() =>{
@@ -81,10 +86,17 @@ const GenerateProgramPage = () => {
       setConnecting(false);
       setCallActive(false);
       
+      // Handle specific WebRTC connection errors
       if (error && error.message) {
-        alert(`Call Error: ${error.message}`);
+        if (error.message.includes("send transport changed to disconnected") || 
+            error.message.includes("WebRTC") || 
+            error.message.includes("connection")) {
+          setConnectionError("Connection lost. Please check your internet connection and try again.");
+        } else {
+          setConnectionError(`Call Error: ${error.message}`);
+        }
       } else {
-        alert("Call failed: The assistant ID may not exist. Please check your Vapi dashboard.");
+        setConnectionError("Call failed: The assistant ID may not exist. Please check your Vapi dashboard.");
       }
     }
    
@@ -111,7 +123,8 @@ const GenerateProgramPage = () => {
     try {
       setConnecting(true);
       setMessages([]);
-      setCallEnded(false)
+      setCallEnded(false);
+      setConnectionError(null);
 
       const fullName = user?.firstName
       ? `${user.firstName} ${user.lastName || ""}`.trim()
@@ -265,6 +278,13 @@ const GenerateProgramPage = () => {
                     ))}
                 </div>
               </div>
+              )}
+
+              {/*error display */}
+              {connectionError && (
+                <div className='w-full mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg'>
+                  <p className='text-destructive text-sm text-center'>{connectionError}</p>
+                </div>
               )}
 
               {/*call controls */}
