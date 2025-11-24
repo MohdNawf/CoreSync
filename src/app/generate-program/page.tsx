@@ -1,324 +1,428 @@
 "use client";
-import { useUser } from '@clerk/nextjs';
-import { useRouter } from 'next/navigation';
-import React, { useEffect } from 'react'
-import { useState } from 'react';
-import { useRef } from 'react';
-import { vapi } from '@/lib/vapi';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 
+import { useUser } from "@clerk/nextjs";
+import React, { useEffect, useRef, useState } from "react";
+import { vapi } from "@/lib/vapi";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+
+type ChatMessage = {
+  role: "assistant" | "user";
+  content: string;
+};
+
+type VoiceMessage = {
+  role: string;
+  content: string;
+};
+
+const INITIAL_MESSAGE: ChatMessage = {
+  role: "assistant",
+  content:
+    "Hi! I'm the CoreSync coach. Tell me about your goals, weekly schedule, equipment, and dietary needs so I can create a personalized workout and diet plan.",
+};
+
+const presetPrompts = [
+  "I want to gain muscle with 4 gym days and no lower back strain.",
+  "Help me lose 10 pounds in 8 weeks with home workouts only.",
+  "Create a lean bulk plan around a vegetarian, high-protein diet.",
+];
 
 const GenerateProgramPage = () => {
+  const { user } = useUser();
 
+  // Chatbot state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    INITIAL_MESSAGE,
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+
+  // Voice assistant state
   const [callActive, setCallActive] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [voiceMessages, setVoiceMessages] = useState<VoiceMessage[]>([]);
   const [callEnded, setCallEnded] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  const {user} = useUser()
-  const router = useRouter();
-
-  const messageContainerRef = useRef<HTMLDivElement>(null)
-
-  //auto-scroll messages
-  useEffect(() =>{
-    if(messageContainerRef.current){
-      messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight
-    }
-  },[messages]);
-
-  //navigate user to profile after call ends
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  const voiceContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if(callEnded){
-      console.log("Call ended, redirecting to profile in 1.5 seconds...");
-      const redirectTimer = setTimeout(()=>{
-        console.log("Redirecting to profile now...");
-        router.push("/profile");
-      }, 1500);
+    chatInputRef.current?.focus();
+  }, []);
 
-      return () => clearTimeout(redirectTimer);
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop =
+        chatContainerRef.current.scrollHeight;
     }
-  },[callEnded,router])
-  
-  // setup event listeners for vapi
-  useEffect(() =>{
-    const handleCallStart =() =>{
-      console.log("Call Started");
+  }, [chatMessages]);
+
+  useEffect(() => {
+    if (voiceContainerRef.current) {
+      voiceContainerRef.current.scrollTop =
+        voiceContainerRef.current.scrollHeight;
+    }
+  }, [voiceMessages]);
+
+  useEffect(() => {
+    if (!user) return;
+    setChatMessages((prev) => {
+      if (prev.length === 1 && prev[0] === INITIAL_MESSAGE) {
+        return [
+          {
+            role: "assistant",
+            content: `Hey ${user.firstName || "there"}! I'm CoreSync. Tell me about your training goals, schedule, injuries, equipment, and diet preferences so I can craft the ideal plan.`,
+          },
+        ];
+      }
+      return prev;
+    });
+  }, [user]);
+
+  // Voice assistant wiring
+  useEffect(() => {
+    const handleCallStart = () => {
       setConnecting(false);
       setCallActive(true);
       setCallEnded(false);
       setConnectionError(null);
-    }
-    
-    const handleCallEnd =() =>{
-      console.log("Call Ended");
+      setVoiceMessages([]);
+    };
+
+    const handleCallEnd = () => {
       setCallActive(false);
       setConnecting(false);
       setIsSpeaking(false);
       setCallEnded(true);
-      console.log("Call ended state set to true");
-    }
+    };
 
-    const handleSpeechStart =() =>{
-      console.log("AI Started Speaking");
-      setIsSpeaking(true);
-    }
+    const handleSpeechStart = () => setIsSpeaking(true);
+    const handleSpeechEnd = () => setIsSpeaking(false);
 
-    const handleSpeechEnd =() =>{
-      console.log("AI Stopped Speaking");
-      setIsSpeaking(false);
-    }
-
-    const handleMessage =(message: any) =>{
-      if(message.type === "transcript" && message.transcriptType === "final"){
-        const newMessage = {content:message.transcript, role:message.role}
-        setMessages(prev =>[...prev,newMessage])
+    const handleMessage = (message: any) => {
+      if (message.type === "transcript" && message.transcriptType === "final") {
+        setVoiceMessages((prev) => [
+          ...prev,
+          { content: message.transcript, role: message.role },
+        ]);
       }
-    }
-    
-    const handleError =(error: any) =>{
-      console.log("Vapi Error", error)
-      console.log("Error details:", JSON.stringify(error))
+    };
+
+    const handleError = (error: any) => {
+      console.error("Vapi Error", error);
       setConnecting(false);
       setCallActive(false);
-      
-      // Handle specific WebRTC connection errors
-      if (error && error.message) {
-        if (error.message.includes("send transport changed to disconnected") || 
-            error.message.includes("WebRTC") || 
-            error.message.includes("connection")) {
-          setConnectionError("Connection lost. Please check your internet connection and try again.");
-        } else {
-          setConnectionError(`Call Error: ${error.message}`);
-        }
+      if (error?.message?.includes("connection")) {
+        setConnectionError(
+          "Connection lost. Please check your network and try again."
+        );
       } else {
-        setConnectionError("Call failed: The assistant ID may not exist. Please check your Vapi dashboard.");
+        setConnectionError(
+          error instanceof Error ? error.message : "Voice call failed."
+        );
       }
-    }
-   
-    vapi.on("call-start",handleCallStart)
-    .on("call-end",handleCallEnd)
-    .on("speech-start",handleSpeechStart)
-    .on("speech-end",handleSpeechEnd)
-    .on("message",handleMessage)
-    .on("error",handleError)
+    };
+
+    vapi
+      .on("call-start", handleCallStart)
+      .on("call-end", handleCallEnd)
+      .on("speech-start", handleSpeechStart)
+      .on("speech-end", handleSpeechEnd)
+      .on("message", handleMessage)
+      .on("error", handleError);
 
     return () => {
-      vapi.off("call-start",handleCallStart)
-    .off("call-end",handleCallEnd)
-    .off("speech-start",handleSpeechStart)
-    .off("speech-end",handleSpeechEnd)
-    .off("message",handleMessage)
-    .off("error",handleError)
-    }
-  },[]);
+      vapi
+        .off("call-start", handleCallStart)
+        .off("call-end", handleCallEnd)
+        .off("speech-start", handleSpeechStart)
+        .off("speech-end", handleSpeechEnd)
+        .off("message", handleMessage)
+        .off("error", handleError);
+    };
+  }, []);
 
-  const toggleCall = async () => {
-    if(callActive) vapi.stop()
-      else{
+  const handleSendMessage = async (prompt?: string) => {
+    const text = prompt ?? chatInput.trim();
+    if (!text || chatLoading) return;
+
+    const updatedMessages: ChatMessage[] = [
+      ...chatMessages,
+      { role: "user", content: text },
+    ];
+
+    setChatMessages(updatedMessages);
+    if (!prompt) {
+      setChatInput("");
+    }
+    setChatLoading(true);
+    setChatError(null);
+
+    try {
+      const response = await fetch("/api/chatbot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: updatedMessages }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || "Gemini could not generate a reply.");
+      }
+
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: data.reply },
+      ]);
+    } catch (error) {
+      console.error("Chatbot error", error);
+      setChatError(
+        error instanceof Error ? error.message : "Failed to reach Gemini."
+      );
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const startVoiceCall = async () => {
+    if (callActive) {
+      vapi.stop();
+      return;
+    }
+
     try {
       setConnecting(true);
-      setMessages([]);
-      setCallEnded(false);
       setConnectionError(null);
+      setCallEnded(false);
 
-      const fullName = user?.firstName
-      ? `${user.firstName} ${user.lastName || ""}`.trim()
-      :"Hi There";
+      const fullName = user?.fullName || user?.firstName || "Friend";
+      const assistantId =
+        process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID ||
+        "34caa6a5-e59f-4a2a-a0de-9642aabdfe48";
 
-      const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID || "34caa6a5-e59f-4a2a-a0de-9642aabdfe48";
-      
-      console.log("Starting call with assistant ID:", assistantId);
-      console.log("API Key:", process.env.NEXT_PUBLIC_VAPI_API_KEY || "6471346a-3201-42a8-8d8c-bdb65440679f");
-      console.log("Full name variable:", fullName);
-      
-      try {
-        await vapi.start(assistantId, {
-          variableValues: {
-            full_name: fullName
-          }
-        })
-        console.log("Vapi start call succeeded!");
-      } catch (startError) {
-        console.error("Vapi start failed:", startError);
-        console.error("Error type:", typeof startError);
-        console.error("Error message:", startError instanceof Error ? startError.message : String(startError));
-        throw startError;
-      }
+      await vapi.start(assistantId, {
+        variableValues: { full_name: fullName },
+      });
     } catch (error) {
-      console.error("Error starting call:", error);
+      console.error("Error starting call", error);
       setConnecting(false);
       setCallActive(false);
-      alert("Failed to start call. Please check your Vapi configuration.");
-    }}
-  }
- 
+      alert("Unable to start voice call. Check your Vapi configuration.");
+    }
+  };
+
+  const voiceStatus = (() => {
+    if (connecting) return "Connecting...";
+    if (callActive && isSpeaking) return "Speaking";
+    if (callActive) return "Listening";
+    if (callEnded) return "Call finished";
+    return "Idle";
+  })();
+
   return (
-  <div className='flex flex-col min-h-screen text-foreground overflow-hidden pb-6 pt-24'>
-    <div className='container mx-auto px-4 h-full max-w-5xl'>
-      {/*title */}
-      <div className='text-center mb-8'>
-        <h1 className='text-3xl font-bold font-mono'>
-          <span>Generate Your</span>
-          <span className='text-primary uppercase'> Fitness Program</span>
-        </h1>
-        <p className='text-muted-foreground mt-2'>
-          Have a voice conversation with our AI assistant to create your personalized plan
-        </p>
-      </div>
+    <div className="flex flex-col min-h-screen text-foreground overflow-hidden pb-12 pt-24">
+      <div className="container mx-auto px-4 max-w-6xl">
+        <header className="text-center mb-10">
+          <p className="text-xs uppercase tracking-[0.4em] text-primary mb-3">
+            CoreSync Studio
+          </p>
+          <h1 className="text-4xl md:text-5xl font-semibold font-mono">
+            Chat Your Way To A{" "}
+            <span className="text-primary">Personalized Program</span>
+          </h1>
+          <p className="text-muted-foreground mt-3 max-w-2xl mx-auto">
+            Clicking “Generate Plan” or “Get Started” launches this Gemini
+            chatbot automatically. Share your stats and goals, and the coach will
+            craft tailored workout + diet guidance.
+          </p>
+        </header>
 
-      {/* voice call area */}
-      <div className='grid grid-cols-1 md:grid-cols-2 gap-6 mb-8'>
-        {/*AI assistant card */}
-        <Card className={`bg-card/90 backdrop-blur-sm border overflow-hidden relative ${
-          callActive ? "border-primary" : "border-border"
-        }`}>
-        <div className='aspect-video flex flex-col items-center justify-center p-6 relative'>
-          {/*voice animation */}
-        <div
-                className={`absolute inset-0 ${
-                  isSpeaking ? "opacity-30" : "opacity-0"
-                } transition-opacity duration-300`}
-              >
-                {/* Voice wave animation when speaking */}
-                <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 flex justify-center items-center h-20">
-                  {[...Array(5)].map((_, i) => (
-                    <div
-                      key={i}
-                      className={`mx-1 h-16 w-1 bg-primary rounded-full ${
-                        isSpeaking ? "animate-sound-wave" : ""
-                      }`}
-                      style={{
-                        animationDelay: `${i * 0.1}s`,
-                        height: isSpeaking ? `${Math.random() * 50 + 20}%` : "5%",
-                      }}
-                    />
-                  ))}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          <Card className="lg:col-span-2 border border-border bg-card/90 overflow-hidden">
+            <div className="px-6 pt-6 pb-4 border-b border-border">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-primary font-semibold">
+                    Gemini Chatbot
+                  </p>
+                  <h2 className="text-2xl font-semibold">
+                    CoreSync Fitness Strategist
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Answer a few questions and get instant program blueprints.
+                  </p>
                 </div>
-              </div>
-              {/*ai image */}
-              <div className='relative size-32 mb-4'>
-                <div
-                className={`absolute inset-0 bg-primary opacity-10 rounded-full blur-lg ${
-                  isSpeaking ? "animate-pulse":""
-                }`}
-                />
-
-                <div className='relative w-full h-full rounded-full bg-card flex items-center justify-center border border-border overflow-hidden'>
-                  <div className='absolute inset-0 bg-gradient-to-b from-primary/10 to-secondary/10'></div>
-                  <img
-                  src="/ai1.png"
-                  alt='ai assistant'
-                  className='w-full h-full object-cover'
-                  />
-                </div>
-              </div>
-
-              <h2 className='text-xl font-bold text-foreground'>CoreSync AI</h2>
-              <p className='text-sm text-muted-foreground mt-1'>Fitness & Diet Coach</p>
-
-              {/* speaking indicator */}
-
-              <div className={`mt-4 flex items-center gap-2 px-3 py-1 rounded-full bg-card border ${
-                callActive ? "border-primary" : "border-border"
-              }`}>
-
-                <div 
-                className={`w-2 h-2 rounded-full ${
-                  callActive ? "bg-primary animate-pulse":"bg-muted"
-                }`}
-                />
-
-                <span className='text-xs text-muted-foreground'>
-                  {isSpeaking ? "Speaking..." : callActive ? "Listening..." : callEnded ? "Redirecting to profile..." : "Waiting..."}
-
-                </span>
-              </div>
-        </div>
-        </Card>
-
-        {/* user card */}
-        <Card className={`bg-card/90 backdrop-blur-sm border overflow-hidden relative`}>
-        <div className='aspect-video flex flex-col items-center justify-center p-6 relative'>
-          {/*user image*/}
-          <div className='relative size-32 mb-4'>
-            <img src={user?.imageUrl} alt="User" className='object-cover rounded-full'/>
-            </div>
-            <h2 className='text-xl font-bold text-foreground'>You</h2>
-            <p className='text-sm text-muted-foreground mt-1'>
-              {user ? (user.firstName + " " + (user.lastName || "")).trim() : "Guest"}
-              </p>
-              {/*user ready text*/}
-              <div className={`mt-4 flex items-center gap-2 px-3 py-1 rounded-full bg-card border`}>
-                <div className={`w-2 h-2 rounded-full bg-muted`}/>
-                <span className='text-xs text-muted-foreground'>Ready</span>
-              </div>
-               </div>
-              </Card>
-
-      </div>
-      
-              {/*messagae container */}
-              {messages.length > 0 && (
-                <div ref={messageContainerRef}
-                className='w-full bg-card/90 backdrop-blur-sm border border-border rounded-xl p-4 mb-8 h-64 overflow-y-auto 
-                transition-all duration-300 scroll-smooth'>
-                  <div className='space-y-3'>
-                    {messages.map((msg, index) => (
-                      <div key= {index} className='message-item animate-fadeIn'>
-                        <div className='font-semibold text-xs text-muted-foreground mb-1'>
-                          {msg.role === "assistant" ? "CoreSync AI" : "You"}:
-                        </div>
-                        <p className='text-foreground'>{msg.content}</p>
-                        </div>
-                    ))}
-                </div>
-              </div>
-              )}
-
-              {/*error display */}
-              {connectionError && (
-                <div className='w-full mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg'>
-                  <p className='text-destructive text-sm text-center'>{connectionError}</p>
-                </div>
-              )}
-
-              {/*call controls */}
-              <div className='w-full flex justify-center gap-4'>
                 <Button
-                className={`w-40 text-xl rounded-3xl ${
-                  callActive
-                  ? "bg-destructive hover:bg-destructive/90"
-                  : callEnded
-                  ? "bg-green-600 hover:bg-green-700"
-                  : "bg-primary hover:bg-primary/90"
-                } text-white relative`}
-
-                onClick={toggleCall}
-                disabled={connecting || callEnded}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  disabled={chatLoading}
+                  onClick={() => handleSendMessage()}
                 >
-                  {connecting && (
-                    <span className='absolute inset-0 rounded-full animate-ping bg-primary/50 opacity-75'></span>
-                  )}
-
-                  <span>
-                    {callActive
-                    ? "End Call"
-                  : connecting
-                  ? "Connecting..."
-                : callEnded
-                ? "View Profile"
-              : "Start Call"}
-                  </span>
+                  {chatLoading ? "Thinking..." : "Generate Response"}
                 </Button>
               </div>
+              <div className="flex flex-wrap gap-2 mt-4">
+                {presetPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    className="text-xs px-3 py-1 rounded-full border border-border text-muted-foreground hover:text-primary hover:border-primary transition"
+                    onClick={() => handleSendMessage(prompt)}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div
+              ref={chatContainerRef}
+              className="h-[420px] overflow-y-auto px-6 py-5 space-y-4 bg-background/60"
+            >
+              {chatMessages.map((msg, index) => (
+                <div
+                  key={`${msg.role}-${index}`}
+                  className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
+                    msg.role === "assistant"
+                      ? "bg-primary/10 border border-primary/25 text-foreground"
+                      : "bg-border/50 border border-border/60 ml-auto max-w-[85%]"
+                  }`}
+                >
+                  <p className="font-semibold text-xs uppercase tracking-wide mb-1">
+                    {msg.role === "assistant" ? "CoreSync Coach" : "You"}
+                  </p>
+                  <p>{msg.content}</p>
+                </div>
+              ))}
+            </div>
+
+            {chatError && (
+              <div className="px-6 py-3 text-sm text-destructive bg-destructive/10 border-t border-destructive/20">
+                {chatError}
+              </div>
+            )}
+
+            <div className="border-t border-border p-5 space-y-3">
+              <textarea
+                ref={chatInputRef}
+                value={chatInput}
+                onChange={(event) => setChatInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder="Describe your current routine, goals, available days, equipment, and dietary restrictions..."
+                className="w-full min-h-[110px] resize-none rounded-xl border border-border bg-background/80 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  Pro tip: include injuries, preferred training split, and
+                  calorie targets.
+                </span>
+                <Button
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 px-6"
+                  disabled={chatLoading}
+                  onClick={() => handleSendMessage()}
+                >
+                  {chatLoading ? "Working..." : "Send"}
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="border border-border bg-card/80 p-6 space-y-6">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-primary font-semibold">
+                Prefer voice?
+              </p>
+              <h2 className="text-xl font-semibold mt-1">
+                Voice Assistant (Optional)
+              </h2>
+              <p className="text-sm text-muted-foreground mt-2">
+                Launch the Vapi-powered voice coach for hands-free planning.
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-border px-4 py-3 bg-background/70 flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Status
+                </p>
+                <p className="font-semibold text-foreground">{voiceStatus}</p>
+              </div>
+              <div
+                className={`w-3 h-3 rounded-full ${
+                  callActive
+                    ? "bg-primary animate-pulse"
+                    : connecting
+                    ? "bg-amber-500 animate-pulse"
+                    : "bg-muted"
+                }`}
+              />
+            </div>
+
+            {connectionError && (
+              <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
+                {connectionError}
+              </div>
+            )}
+
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                Transcripts
+              </p>
+              <div
+                ref={voiceContainerRef}
+                className="h-44 overflow-y-auto border border-border rounded-lg bg-background/60 px-3 py-2 space-y-2 text-sm"
+              >
+                {voiceMessages.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">
+                    Start a call to capture the conversation here.
+                  </p>
+                ) : (
+                  voiceMessages.map((msg, index) => (
+                    <div key={`${msg.role}-${index}`}>
+                      <span className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                        {msg.role === "assistant" ? "CoreSync" : "You"}:
+                      </span>{" "}
+                      <span>{msg.content}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <Button
+              className={`w-full rounded-2xl text-white ${
+                callActive
+                  ? "bg-destructive hover:bg-destructive/90"
+                  : "bg-primary hover:bg-primary/90"
+              }`}
+              disabled={connecting}
+              onClick={startVoiceCall}
+            >
+              {callActive
+                ? "End Voice Call"
+                : connecting
+                ? "Connecting..."
+                : "Start Voice Assistant"}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Tip: use headphones for best recognition quality.
+            </p>
+          </Card>
+        </div>
+      </div>
     </div>
-  </div>
-)
-}
+  );
+};
 
 export default GenerateProgramPage;
+

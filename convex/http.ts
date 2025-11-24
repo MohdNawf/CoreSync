@@ -63,31 +63,45 @@ http.route({
 });
 // validate and fix workout plan to ensure it has proper numeric types
 function validateWorkoutPlan(plan: any) {
-  const validatedPlan = {
-    schedule: plan.schedule,
-    exercises: plan.exercises.map((exercise: any) => ({
-      day: exercise.day,
-      routines: exercise.routines.map((routine: any) => ({
-        name: routine.name,
-        sets: typeof routine.sets === "number" ? routine.sets : parseInt(routine.sets) || 1,
-        reps: typeof routine.reps === "number" ? routine.reps : parseInt(routine.reps) || 10,
-      })),
-    })),
-  };
-  return validatedPlan;
+  const schedule = Array.isArray(plan.schedule)
+    ? plan.schedule.map((day: any) => String(day))
+    : [];
+  const exercises = Array.isArray(plan.exercises)
+    ? plan.exercises.map((exercise: any) => ({
+        day: String(exercise.day ?? "Unknown"),
+        routines: Array.isArray(exercise.routines)
+          ? exercise.routines.map((routine: any) => ({
+              name: String(routine.name ?? "Exercise"),
+              sets:
+                typeof routine.sets === "number"
+                  ? routine.sets
+                  : parseInt(routine.sets, 10) || 1,
+              reps:
+                typeof routine.reps === "number"
+                  ? routine.reps
+                  : parseInt(routine.reps, 10) || 10,
+            }))
+          : [],
+      }))
+    : [];
+  return { schedule, exercises };
 }
 
 // validate diet plan to ensure it strictly follows schema
 function validateDietPlan(plan: any) {
-  // only keep the fields we want
-  const validatedPlan = {
-    dailyCalories: plan.dailyCalories,
-    meals: plan.meals.map((meal: any) => ({
-      name: meal.name,
-      foods: meal.foods,
-    })),
-  };
-  return validatedPlan;
+  const dailyCalories =
+    typeof plan.dailyCalories === "number"
+      ? plan.dailyCalories
+      : parseInt(plan.dailyCalories, 10) || 0;
+  const meals = Array.isArray(plan.meals)
+    ? plan.meals.map((meal: any) => ({
+        name: String(meal.name ?? "Meal"),
+        foods: Array.isArray(meal.foods)
+          ? meal.foods.map((food: any) => String(food))
+          : [],
+      }))
+    : [];
+  return { dailyCalories, meals };
 }
 
 http.route({
@@ -111,8 +125,10 @@ http.route({
         injuries,
       } = payload;
 
+      console.log("Payload is here", payload);
+
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.0-flash-001",
+        model: "gemini-1.0-pro-latest",
         generationConfig: {
           temperature: 0.4,
           topP: 0.9,
@@ -212,11 +228,50 @@ http.route({
       let dietPlan = JSON.parse(dietPlanText);
       dietPlan = validateDietPlan(dietPlan);
 
+      // save to our convex db
+
+     const planId = await ctx.runMutation(api.plans.createPlan, {
+        userId: user_Id,
+        dietPlan,
+        isActive: true,
+        workoutPlan,
+        name: `${fitness_goal} Plan - ${new Date().toLocaleDateString()}`
+      });
+      console.log("Created Convex plan", { planId, userId: user_Id });
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            planId,
+            workoutPlan,
+            dietPlan,
+          },
+        }),
+        { 
+          status: 200,
+        headers: { "Content-Type": "application/json"},
+        }
+      );
+
       const response = await model.generateContent(workoutPrompt);
       console.log(response.response.text());
       return new Response(response.response.text(), { status: 200 });
+    
+    
+    
     } catch (error) {
-      return new Response("Error", { status: 500 });
+      console.error("Error generating program", error);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+        { 
+          status: 500,
+          headers: { "Content-Type": "application/json"},
+        }
+      );
     }
   })
 })

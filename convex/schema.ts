@@ -9,19 +9,16 @@ export default defineSchema({
     }).index("by_clerk_id", ["clerkId"]),
 
     plans: defineTable({
-        userId: v.id("users"),
+        userId: v.string(),
         name: v.string(),
         workoutPlan: v.object({
             schedule: v.array(v.string()),
             exercises: v.array(v.object({
                 day: v.string(),
-                routine: v.array(v.object({
+                routines: v.array(v.object({
                     name: v.string(),
-                    sets: v.optional(v.number()),
-                    reps: v.optional(v.number()),
-                    duration: v.optional(v.string()),
-                    description: v.optional(v.string()),
-                    exercises: v.optional(v.array(v.string())),
+                    sets: v.number(),
+                    reps: v.number(),
                 })),
             })),
         }),
