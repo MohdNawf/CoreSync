@@ -7,7 +7,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const http = httpRouter();
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
+const googleApiKey = process.env.GOOGLE_API_KEY;
+if (!googleApiKey) {
+  throw new Error("GOOGLE_API_KEY is not set");
+}
+const genAI = new GoogleGenerativeAI(googleApiKey);
 
 http.route({
     path: "/clerk-webhook",
@@ -128,7 +132,7 @@ http.route({
       console.log("Payload is here", payload);
 
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.0-pro-latest",
+        model: "gemini-pro-latest",
         generationConfig: {
           temperature: 0.4,
           topP: 0.9,
