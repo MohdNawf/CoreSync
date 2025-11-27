@@ -7,12 +7,6 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const http = httpRouter();
 
-const googleApiKey = process.env.GOOGLE_API_KEY;
-if (!googleApiKey) {
-  throw new Error("GOOGLE_API_KEY is not set");
-}
-const genAI = new GoogleGenerativeAI(googleApiKey);
-
 http.route({
     path: "/clerk-webhook",
     method: "POST",
@@ -112,6 +106,22 @@ http.route({
   path: "/vapi/generate-program",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const googleApiKey = process.env.GOOGLE_API_KEY;
+    if (!googleApiKey) {
+      console.error("GOOGLE_API_KEY is not set in Convex environment");
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Server misconfiguration: GOOGLE_API_KEY missing",
+        }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const genAI = new GoogleGenerativeAI(googleApiKey);
     try {
       const payload = await request.json();
       const {

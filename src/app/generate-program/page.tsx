@@ -1,6 +1,7 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import { vapi } from "@/lib/vapi";
 import { Card } from "@/components/ui/card";
@@ -19,7 +20,7 @@ type VoiceMessage = {
 const INITIAL_MESSAGE: ChatMessage = {
   role: "assistant",
   content:
-    "Hi! I'm the CoreSync coach. Tell me about your goals, weekly schedule, equipment, and dietary needs so I can create a personalized workout and diet plan.",
+    "Hi! I'm the CoreSync intake coach. I only gather your goals, schedule, injuries, equipment, and diet preferences here. Once everything is captured, your full program will appear on your profile page.",
 };
 
 const presetPrompts = [
@@ -30,6 +31,7 @@ const presetPrompts = [
 
 const GenerateProgramPage = () => {
   const { user } = useUser();
+  const router = useRouter();
 
   // Chatbot state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -38,6 +40,7 @@ const GenerateProgramPage = () => {
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [planSaveNotice, setPlanSaveNotice] = useState<string | null>(null);
 
   // Voice assistant state
   const [callActive, setCallActive] = useState(false);
@@ -50,6 +53,7 @@ const GenerateProgramPage = () => {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const voiceContainerRef = useRef<HTMLDivElement>(null);
+  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     chatInputRef.current?.focus();
@@ -76,7 +80,9 @@ const GenerateProgramPage = () => {
         return [
           {
             role: "assistant",
-            content: `Hey ${user.firstName || "there"}! I'm CoreSync. Tell me about your training goals, schedule, injuries, equipment, and diet preferences so I can craft the ideal plan.`,
+            content: `Hey ${
+              user.firstName || "there"
+            }! I'm CoreSync. I only collect your training goals, schedule, injuries, equipment, and diet preferences here — you'll see the full workout on your profile page once I'm done.`,
           },
         ];
       }
@@ -162,12 +168,19 @@ const GenerateProgramPage = () => {
     }
     setChatLoading(true);
     setChatError(null);
+    setPlanSaveNotice(null);
 
     try {
       const response = await fetch("/api/chatbot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: updatedMessages }),
+        body: JSON.stringify({
+          messages: updatedMessages,
+          userId: user?.id,
+          userName: user
+            ? `${user.firstName || ""} ${user.lastName || ""}`.trim()
+            : undefined,
+        }),
       });
 
       const data = await response.json();
@@ -180,6 +193,18 @@ const GenerateProgramPage = () => {
         ...prev,
         { role: "assistant", content: data.reply },
       ]);
+
+      if (data.planSaved && data.planId) {
+        setPlanSaveNotice(
+          "Thanks! Your plan is saved. Redirecting you to the profile page…"
+        );
+        if (redirectTimeoutRef.current) {
+          clearTimeout(redirectTimeoutRef.current);
+        }
+        redirectTimeoutRef.current = setTimeout(() => {
+          router.push("/profile");
+        }, 2000);
+      }
     } catch (error) {
       console.error("Chatbot error", error);
       setChatError(
@@ -189,6 +214,14 @@ const GenerateProgramPage = () => {
       setChatLoading(false);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const startVoiceCall = async () => {
     if (callActive) {
@@ -238,8 +271,9 @@ const GenerateProgramPage = () => {
           </h1>
           <p className="text-muted-foreground mt-3 max-w-2xl mx-auto">
             Clicking “Generate Plan” or “Get Started” launches this Gemini
-            chatbot automatically. Share your stats and goals, and the coach will
-            craft tailored workout + diet guidance.
+            chatbot automatically. Share your stats and goals here—the bot only
+            collects information, and the finished workouts + diet plan will
+            live on your profile page.
           </p>
         </header>
 
@@ -304,6 +338,11 @@ const GenerateProgramPage = () => {
             {chatError && (
               <div className="px-6 py-3 text-sm text-destructive bg-destructive/10 border-t border-destructive/20">
                 {chatError}
+              </div>
+            )}
+            {planSaveNotice && (
+              <div className="px-6 py-3 text-sm text-emerald-600 bg-emerald-500/10 border-t border-emerald-500/30">
+                {planSaveNotice}
               </div>
             )}
 
