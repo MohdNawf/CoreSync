@@ -128,7 +128,10 @@ const GenerateProgramPage = () => {
       ) {
         setVoiceMessages((prev) => [
           ...prev,
-          { content: message.transcript, role: message.role },
+          { 
+            content: message.transcript, 
+            role: message.role as string // type assertion ensures type, fixing lint error
+          } as VoiceMessage // enforce VoiceMessage type
         ]);
       }
     };
@@ -290,7 +293,7 @@ const GenerateProgramPage = () => {
             <span className="text-primary">Personalized Program</span>
           </h1>
           <p className="text-muted-foreground mt-3 max-w-2xl mx-auto">
-            Clicking “Generate Plan” or “Get Started” launches this Gemini
+            Clicking “Generate Plan” or “Get Started” this launches our AI
             chatbot automatically. Share your stats and goals here—the bot only
             collects information, and the finished workouts + diet plan will
             live on your profile page.
