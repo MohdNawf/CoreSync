@@ -17,6 +17,15 @@ type VoiceMessage = {
   content: string;
 };
 
+type VapiMessage = {
+  type: string;
+  transcriptType?: string;
+  transcript?: string;
+  role?: string;
+  // Allow additional properties without using `any`
+  [key: string]: unknown;
+};
+
 const INITIAL_MESSAGE: ChatMessage = {
   role: "assistant",
   content:
@@ -110,8 +119,13 @@ const GenerateProgramPage = () => {
     const handleSpeechStart = () => setIsSpeaking(true);
     const handleSpeechEnd = () => setIsSpeaking(false);
 
-    const handleMessage = (message: any) => {
-      if (message.type === "transcript" && message.transcriptType === "final") {
+    const handleMessage = (message: VapiMessage) => {
+      if (
+        message.type === "transcript" &&
+        message.transcriptType === "final" &&
+        typeof message.transcript === "string" &&
+        typeof message.role === "string"
+      ) {
         setVoiceMessages((prev) => [
           ...prev,
           { content: message.transcript, role: message.role },
@@ -119,11 +133,17 @@ const GenerateProgramPage = () => {
       }
     };
 
-    const handleError = (error: any) => {
+    const handleError = (error: unknown) => {
       console.error("Vapi Error", error);
       setConnecting(false);
       setCallActive(false);
-      if (error?.message?.includes("connection")) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "message" in error &&
+        typeof (error as { message: unknown }).message === "string" &&
+        (error as { message: string }).message.includes("connection")
+      ) {
         setConnectionError(
           "Connection lost. Please check your network and try again."
         );

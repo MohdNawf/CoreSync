@@ -2,6 +2,7 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import { ArrowRightIcon } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 import TerminalOverlay from '@/components/TerminalOverlay'
 import UserProgram from '@/components/UserProgram'
 const HomePage = () => {
@@ -89,7 +90,14 @@ const HomePage = () => {
               {/* image container */}
             <div className='relative aspect-square max-w-lg mx-auto'>
               <div className='relative overflow-hidden rounded-lg bg-cyber-black'>
-                <img src="/ai2.png" alt="AI Fitness Coach" className='size-full object-cover object-center' />
+                <Image
+                  src="/ai2.png"
+                  alt="AI Fitness Coach"
+                  fill
+                  className='object-cover object-center'
+                  sizes="(min-width: 1024px) 400px, 60vw"
+                  priority
+                />
                 <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,transparent_calc(50%-1px),var(--cyber-glow-primary)_50%,transparent_calc(50%+1px),transparent_100%)] bg-[length:100%_8px] animate-scanline pointer-events-none" />
 
                 {/*decorations on top of the image*/}
